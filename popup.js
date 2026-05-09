@@ -130,10 +130,16 @@
             const copyTranslationBtn = document.getElementById('copy-translation');
             const translationInput = document.getElementById('translation-input');
             const translationOutput = document.getElementById('translation-output');
+            const targetLangSelect = document.getElementById('target-language');
+
+            // Save preferred language when changed
+            targetLangSelect.addEventListener('change', () => {
+                chrome.storage.sync.set({ preferredLanguage: targetLangSelect.value });
+            });
 
             translateBtn.addEventListener('click', async () => {
                 const text = translationInput.value.trim();
-                const targetLang = document.getElementById('target-language').value;
+                const targetLang = targetLangSelect.value;
 
                 if (!text) {
                     this.showError('Select text to translate');

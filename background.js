@@ -114,32 +114,44 @@ class TextEnhancerBackground {
     }
 
     async translateText(text, targetLang) {
-        // First try Google's unofficial but stable API
+        // Try Google Translate first (Stable)
         try {
             const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-            const response = await fetch(googleUrl);
+            const response = await this.fetchWithTimeout(googleUrl);
             if (response.ok) {
                 const data = await response.json();
-                if (data && data[0] && data[0][0] && data[0][0][0]) {
-                    return data[0][0][0];
+                if (data && data[0]) {
+                    const translation = data[0].map(x => x[0]).join('');
+                    if (translation && translation !== text) return translation;
                 }
             }
         } catch (e) {
-            console.warn('Google Translate fallback failed, trying LibreTranslate mirrors...');
+            console.warn('Google Translate failed, trying MyMemory...');
+        }
+
+        // Try MyMemory API (Very stable fallback)
+        try {
+            const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
+            const response = await this.fetchWithTimeout(myMemoryUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.responseData && data.responseData.translatedText) {
+                    return data.responseData.translatedText;
+                }
+            }
+        } catch (e) {
+            console.warn('MyMemory failed, trying LibreTranslate mirrors...');
         }
 
         const endpoints = [
             'https://translate.argosopentech.com/translate',
-            'https://libretranslate.de/translate',
-            'https://lt.vern.cc/translate'
+            'https://lt.vern.cc/translate',
+            'https://libretranslate.de/translate'
         ];
-
-        let lastError = null;
 
         for (const url of endpoints) {
             try {
-                console.log(`Attempting translation with: ${url}`);
-                const response = await fetch(url, {
+                const response = await this.fetchWithTimeout(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -154,21 +166,27 @@ class TextEnhancerBackground {
                     const contentType = response.headers.get('content-type');
                     if (contentType && contentType.includes('application/json')) {
                         const data = await response.json();
-                        if (data && data.translatedText) {
-                            return data.translatedText;
-                        }
-                    } else {
-                        console.warn(`Endpoint ${url} returned non-JSON content: ${contentType}`);
+                        if (data && data.translatedText) return data.translatedText;
                     }
                 }
-                console.warn(`Endpoint ${url} failed with status: ${response.status}`);
             } catch (error) {
-                console.warn(`Endpoint ${url} error:`, error);
-                lastError = error;
+                console.warn(`Endpoint ${url} failed:`, error);
             }
         }
 
-        throw new Error(lastError ? lastError.message : 'All translation services failed');
+        throw new Error('All translation services are currently unavailable. Please try again later.');
+    }
+
+    async fetchWithTimeout(resource, options = {}) {
+        const { timeout = 8000 } = options;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
     }
 
     // Cleanup on extension uninstall
