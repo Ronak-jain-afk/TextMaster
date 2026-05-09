@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Text Enhancer",
+  "version": "1.0",
+  "description": "Enhance text reading with font control and translation features",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://libretranslate.de/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Text Enhancer"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["*.json", "*.css"],
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": true
+    }
+  ]
+}
