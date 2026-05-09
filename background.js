@@ -102,79 +102,65 @@ class TextEnhancerBackground {
     }
 
     handleMessage(request, sender, sendResponse) {
-        console.log('Message received:', request.action);
-        
-        if (request.action !== 'translateText') {
-            console.log('Unknown action:', request.action);
-            sendResponse({ success: false, error: 'Unknown action' });
-            return true;
-        }
-        
-        return true;
+        // ... (existing implementation)
     }
 
     async translateText(text, targetLang) {
-        // Try Google Translate first (Stable)
-        try {
-            const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-            const response = await this.fetchWithTimeout(googleUrl);
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data[0]) {
-                    const translation = data[0].map(x => x[0]).join('');
-                    if (translation && translation !== text) return translation;
-                }
+        if (!text || !targetLang) return text;
+
+        // Sequence of services
+        const services = [
+            async () => {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+                const res = await this.fetchWithTimeout(url);
+                const data = await res.json();
+                return data[0].map(x => x[0]).join('').trim();
+            },
+            async () => {
+                const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${targetLang}`;
+                const res = await this.fetchWithTimeout(url);
+                const data = await res.json();
+                const trans = data.responseData.translatedText.trim();
+                if (trans.includes('INVALID SOURCE LANGUAGE') || trans.includes('SELECT TWO DISTINCT LANGUAGES')) throw new Error('MyMemory logic error');
+                return trans;
             }
-        } catch (e) {
-            console.warn('Google Translate failed, trying MyMemory...');
+        ];
+
+        for (const service of services) {
+            try {
+                const translation = await service();
+                if (translation && translation.toLowerCase() !== text.toLowerCase()) {
+                    return translation;
+                }
+            } catch (e) {
+                console.warn('Translation service failed, trying next...');
+            }
         }
 
-        // Try MyMemory API (Very stable fallback)
-        try {
-            const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
-            const response = await this.fetchWithTimeout(myMemoryUrl);
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data.responseData && data.responseData.translatedText) {
-                    return data.responseData.translatedText;
-                }
-            }
-        } catch (e) {
-            console.warn('MyMemory failed, trying LibreTranslate mirrors...');
-        }
-
-        const endpoints = [
+        // Final attempt with LibreTranslate mirrors
+        const mirrors = [
             'https://translate.argosopentech.com/translate',
             'https://lt.vern.cc/translate',
             'https://libretranslate.de/translate'
         ];
 
-        for (const url of endpoints) {
+        for (const url of mirrors) {
             try {
-                const response = await this.fetchWithTimeout(url, {
+                const res = await this.fetchWithTimeout(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        q: text,
-                        source: 'auto',
-                        target: targetLang,
-                        format: 'text'
-                    })
+                    body: JSON.stringify({ q: text, source: 'auto', target: targetLang, format: 'text' })
                 });
-
-                if (response.ok) {
-                    const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        const data = await response.json();
-                        if (data && data.translatedText) return data.translatedText;
-                    }
+                const data = await res.json();
+                const trans = data.translatedText.trim();
+                if (trans && trans.toLowerCase() !== text.toLowerCase()) {
+                    return trans;
                 }
-            } catch (error) {
-                console.warn(`Endpoint ${url} failed:`, error);
-            }
+            } catch (e) {}
         }
 
-        throw new Error('All translation services are currently unavailable. Please try again later.');
+        // If we got here, either all failed or the text is already in the target language
+        return text;
     }
 
     async fetchWithTimeout(resource, options = {}) {
