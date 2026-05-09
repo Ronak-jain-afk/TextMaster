@@ -10,7 +10,10 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://libretranslate.de/*"
+    "https://libretranslate.de/*",
+    "https://translate.argosopentech.com/*",
+    "https://lt.vern.cc/*",
+    "https://translate.googleapis.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

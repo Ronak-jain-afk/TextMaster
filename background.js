@@ -114,26 +114,61 @@ class TextEnhancerBackground {
     }
 
     async translateText(text, targetLang) {
-        // Using LibreTranslate API
-        const response = await fetch('https://libretranslate.de/translate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                q: text,
-                source: 'auto',
-                target: targetLang,
-                format: 'text'
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Translation API error');
+        // First try Google's unofficial but stable API
+        try {
+            const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+            const response = await fetch(googleUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data[0] && data[0][0] && data[0][0][0]) {
+                    return data[0][0][0];
+                }
+            }
+        } catch (e) {
+            console.warn('Google Translate fallback failed, trying LibreTranslate mirrors...');
         }
 
-        const data = await response.json();
-        return data.translatedText;
+        const endpoints = [
+            'https://translate.argosopentech.com/translate',
+            'https://libretranslate.de/translate',
+            'https://lt.vern.cc/translate'
+        ];
+
+        let lastError = null;
+
+        for (const url of endpoints) {
+            try {
+                console.log(`Attempting translation with: ${url}`);
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        q: text,
+                        source: 'auto',
+                        target: targetLang,
+                        format: 'text'
+                    })
+                });
+
+                if (response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (data && data.translatedText) {
+                            return data.translatedText;
+                        }
+                    } else {
+                        console.warn(`Endpoint ${url} returned non-JSON content: ${contentType}`);
+                    }
+                }
+                console.warn(`Endpoint ${url} failed with status: ${response.status}`);
+            } catch (error) {
+                console.warn(`Endpoint ${url} error:`, error);
+                lastError = error;
+            }
+        }
+
+        throw new Error(lastError ? lastError.message : 'All translation services failed');
     }
 
     // Cleanup on extension uninstall
